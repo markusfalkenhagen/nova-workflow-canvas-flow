@@ -63,3 +63,17 @@ export interface CustomizedPrompt {
   promptId: string;
   text: string;
 }
+
+export interface ChatbotMessage {
+  id: string;
+  content: string;
+  sender: 'system' | 'user';
+  timestamp: Date;
+}
+
+export interface ConfigurationState {
+  currentStepIndex: number;
+  userInputs: UserInput[];
+  customizedPrompts: CustomizedPrompt[];
+  isConfigured: boolean;
+}

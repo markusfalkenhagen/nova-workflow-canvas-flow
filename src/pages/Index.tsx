@@ -4,23 +4,24 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Search } from 'lucide-react';
+import { Search, MessageCircle } from 'lucide-react';
 import { workflowTemplates } from '@/data/templates';
 import { UserInput, WorkflowTemplate, CustomizedPrompt } from '@/types';
 import WorkflowCard from '@/components/WorkflowCard';
 import WorkflowVisualizer from '@/components/WorkflowVisualizer';
-import ChatInterface from '@/components/ChatInterface';
 import { N8nJsonSynthesizer } from '@/lib/n8nJsonSynthesizer';
+import ChatbotModal from '@/components/ChatbotModal';
+import Layout from '@/components/Layout';
 
 const Index = () => {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
-  const [configurationStarted, setConfigurationStarted] = useState(false);
   const [userInputs, setUserInputs] = useState<UserInput[]>([]);
   const [customizedPrompts, setCustomizedPrompts] = useState<CustomizedPrompt[]>([]);
   const [isConfigured, setIsConfigured] = useState(false);
   const [generatedJson, setGeneratedJson] = useState<string | null>(null);
+  const [isChatbotOpen, setIsChatbotOpen] = useState(false);
 
   // Gefilterte Vorlagen basierend auf Suchbegriff
   const filteredTemplates = useMemo(() => {
@@ -43,24 +44,25 @@ const Index = () => {
   // Behandelt die Auswahl einer Workflow-Vorlage
   const handleTemplateSelect = useCallback((templateId: string) => {
     setSelectedTemplateId(templateId);
-    setConfigurationStarted(false);
     setUserInputs([]);
     setCustomizedPrompts([]);
     setIsConfigured(false);
     setGeneratedJson(null);
   }, []);
 
-  // Startet die Konfiguration der ausgewählten Vorlage
-  const handleStartConfiguration = useCallback(() => {
-    setConfigurationStarted(true);
-  }, []);
+  // Öffnet den Chatbot für die Konfiguration
+  const handleStartChatbot = useCallback(() => {
+    if (selectedTemplate) {
+      setIsChatbotOpen(true);
+    }
+  }, [selectedTemplate]);
 
   // Wird aufgerufen, wenn die Konfiguration abgeschlossen ist
   const handleConfigurationComplete = useCallback((inputs: UserInput[], prompts: CustomizedPrompt[]) => {
     setUserInputs(inputs);
     setCustomizedPrompts(prompts);
     setIsConfigured(true);
-    setConfigurationStarted(false);
+    setIsChatbotOpen(false);
   }, []);
 
   // Generiert und kopiert das n8n JSON
@@ -96,21 +98,8 @@ const Index = () => {
   }, [selectedTemplate, userInputs, customizedPrompts, toast]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200">
-        <div className="nova-container py-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h1 className="text-2xl font-bold text-nova-900">N.O.V.A.</h1>
-              <p className="text-gray-500">n8n Workflow Orchestration & Visualization Assistant</p>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Hauptinhalt */}
-      <main className="nova-container py-8">
+    <Layout>
+      <div className="nova-container py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Linke Spalte: Workflow-Vorlagen */}
           <div className="lg:col-span-1 space-y-6">
@@ -157,51 +146,44 @@ const Index = () => {
                   <h2 className="text-2xl font-semibold mb-2">{selectedTemplate.title}</h2>
                   <p className="text-gray-600 mb-4">{selectedTemplate.description}</p>
                   
-                  <Tabs defaultValue="config" className="w-full">
+                  {/* Chatbot Button - Prominent über Tabs */}
+                  <div className="mb-6">
+                    <Button 
+                      onClick={handleStartChatbot}
+                      className="w-full bg-nova-600 hover:bg-nova-700 text-white py-2 flex items-center justify-center gap-2"
+                      size="lg"
+                    >
+                      <MessageCircle className="mr-2" />
+                      Mit N.O.V.A. Assistent konfigurieren
+                    </Button>
+                  </div>
+                  
+                  <Tabs defaultValue="details" className="w-full">
                     <TabsList className="mb-4">
-                      <TabsTrigger value="config">Konfiguration</TabsTrigger>
+                      <TabsTrigger value="details">Details</TabsTrigger>
                       <TabsTrigger value="visualization">Visualisierung</TabsTrigger>
                       {generatedJson && <TabsTrigger value="json">JSON</TabsTrigger>}
                     </TabsList>
                     
-                    <TabsContent value="config" className="space-y-6">
-                      {!configurationStarted ? (
-                        <>
-                          <div className="space-y-4">
-                            <h3 className="text-lg font-medium">Benötigte Eingaben</h3>
-                            <div className="space-y-2">
-                              {selectedTemplate.inputs.map((input) => (
-                                <div key={input.id} className="p-3 bg-gray-50 rounded-lg">
-                                  <div className="flex justify-between items-start">
-                                    <div>
-                                      <h4 className="font-medium">{input.label}</h4>
-                                      <p className="text-sm text-gray-500">{input.description}</p>
-                                    </div>
-                                    <span className={`text-xs px-2 py-1 rounded ${input.required ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
-                                      {input.required ? 'Erforderlich' : 'Optional'}
-                                    </span>
-                                  </div>
+                    <TabsContent value="details" className="space-y-6">
+                      <div className="space-y-4">
+                        <h3 className="text-lg font-medium">Benötigte Eingaben</h3>
+                        <div className="space-y-2">
+                          {selectedTemplate.inputs.map((input) => (
+                            <div key={input.id} className="p-3 bg-gray-50 rounded-lg">
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <h4 className="font-medium">{input.label}</h4>
+                                  <p className="text-sm text-gray-500">{input.description}</p>
                                 </div>
-                              ))}
+                                <span className={`text-xs px-2 py-1 rounded ${input.required ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
+                                  {input.required ? 'Erforderlich' : 'Optional'}
+                                </span>
+                              </div>
                             </div>
-                          </div>
-                          
-                          <div className="flex justify-center pt-4">
-                            <Button 
-                              size="lg" 
-                              onClick={handleStartConfiguration}
-                              disabled={!selectedTemplate}
-                            >
-                              Konfiguration starten
-                            </Button>
-                          </div>
-                        </>
-                      ) : (
-                        <ChatInterface
-                          template={selectedTemplate}
-                          onComplete={handleConfigurationComplete}
-                        />
-                      )}
+                          ))}
+                        </div>
+                      </div>
                       
                       {isConfigured && (
                         <div className="mt-8 flex justify-center">
@@ -250,17 +232,16 @@ const Index = () => {
             )}
           </div>
         </div>
-      </main>
-      
-      {/* Footer */}
-      <footer className="bg-white border-t border-gray-200 mt-12">
-        <div className="nova-container py-6">
-          <div className="text-center text-gray-500 text-sm">
-            &copy; {new Date().getFullYear()} N.O.V.A. - n8n Workflow Orchestration & Visualization Assistant
-          </div>
-        </div>
-      </footer>
-    </div>
+      </div>
+
+      {/* Chatbot Modal */}
+      <ChatbotModal 
+        isOpen={isChatbotOpen} 
+        onClose={() => setIsChatbotOpen(false)} 
+        template={selectedTemplate}
+        onComplete={handleConfigurationComplete}
+      />
+    </Layout>
   );
 };
 
