@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
-import { useMediaQuery } from "@/hooks/use-mobile";
+import { useIsMobile, useMediaQuery } from "@/hooks/use-mobile";
 import DocsSidebar from './DocsSidebar';
 import MarkdownViewer from './MarkdownViewer';
 import DocsMicrophone from './DocsMicrophone';
@@ -18,7 +17,7 @@ const DocsModal: React.FC<DocsModalProps> = ({ isOpen, onClose }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [markdownContent, setMarkdownContent] = useState('');
   const [isListening, setIsListening] = useState(false);
-  const isMobile = useMediaQuery("(max-width: 640px)");
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     if (isOpen && activeDoc) {

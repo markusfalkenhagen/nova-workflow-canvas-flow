@@ -8,6 +8,15 @@ interface MarkdownViewerProps {
   searchQuery?: string;
 }
 
+// Add types for the code component props to include 'inline'
+interface CodeProps {
+  node: any;
+  inline?: boolean;
+  className?: string;
+  children: React.ReactNode;
+  [key: string]: any;
+}
+
 const MarkdownViewer: React.FC<MarkdownViewerProps> = ({ 
   markdownContent, 
   searchQuery = '' 
@@ -50,7 +59,7 @@ const MarkdownViewer: React.FC<MarkdownViewerProps> = ({
           a: ({ node, ...props }) => (
             <a className="text-primary hover:text-primary/80 underline" {...props} />
           ),
-          code: ({ node, inline, className, children, ...props }) => {
+          code: ({ node, inline, className, children, ...props }: CodeProps) => {
             if (inline) {
               return (
                 <code className="bg-gray-100 px-1 py-0.5 rounded text-gray-800 font-mono text-sm" {...props}>
