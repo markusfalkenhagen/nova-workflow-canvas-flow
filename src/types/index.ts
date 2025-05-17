@@ -69,6 +69,9 @@ export interface ChatbotMessage {
   content: string;
   sender: 'system' | 'user';
   timestamp: Date;
+  responseType?: string;
+  responseOptions?: any[];
+  responseData?: any;
 }
 
 export interface ConfigurationState {
@@ -76,4 +79,17 @@ export interface ConfigurationState {
   userInputs: UserInput[];
   customizedPrompts: CustomizedPrompt[];
   isConfigured: boolean;
+}
+
+// New interfaces for webhook responses
+export interface ChatResponseOption {
+  value: string;
+  label?: string;
+}
+
+export interface WebhookResponseData {
+  inputType?: string;
+  placeholder?: string;
+  rows?: number;
+  [key: string]: any;
 }

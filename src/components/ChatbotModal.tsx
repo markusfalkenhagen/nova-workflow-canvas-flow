@@ -2,15 +2,19 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { WorkflowTemplate, UserInput, CustomizedPrompt } from '@/types';
+import { WorkflowTemplate, UserInput, CustomizedPrompt, ChatbotMessage } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { N8nJsonSynthesizer } from '@/lib/n8nJsonSynthesizer';
+import ChatResponseModule from '@/components/ChatResponseModule';
 
 interface Message {
   id: string;
   content: string;
   sender: 'system' | 'user';
   timestamp: Date;
+  responseType?: string;
+  responseOptions?: any[];
+  responseData?: any;
 }
 
 interface ChatbotModalProps {
@@ -18,6 +22,16 @@ interface ChatbotModalProps {
   onClose: () => void;
   template: WorkflowTemplate | null;
   onComplete: (userInputs: UserInput[], customizedPrompts: CustomizedPrompt[]) => void;
+}
+
+interface WebhookResponse {
+  message: string;
+  responseType?: string;
+  responseOptions?: any[];
+  responseData?: any;
+  isComplete?: boolean;
+  userInputs?: UserInput[];
+  customizedPrompts?: CustomizedPrompt[];
 }
 
 const ChatbotModal: React.FC<ChatbotModalProps> = ({ 
@@ -28,34 +42,29 @@ const ChatbotModal: React.FC<ChatbotModalProps> = ({
 }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
-  const [currentInputIndex, setCurrentInputIndex] = useState(0);
   const [userInputs, setUserInputs] = useState<UserInput[]>([]);
   const [customizedPrompts, setCustomizedPrompts] = useState<CustomizedPrompt[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [configurationComplete, setConfigurationComplete] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
-  // Reset state when template changes
+  const WEBHOOK_URL = 'https://example.com/api/n8n-assistant'; // Replace with your actual webhook URL
+
+  // Reset state when template changes or modal opens
   useEffect(() => {
-    if (template) {
-      setMessages([
-        {
-          id: 'welcome',
-          content: `Willkommen! Ich helfe Ihnen bei der Konfiguration des Workflows "${template.title}". Bitte beantworten Sie ein paar Fragen.`,
-          sender: 'system',
-          timestamp: new Date()
-        }
-      ]);
+    if (isOpen && template) {
+      setMessages([]);
       setUserInputs([]);
       setCustomizedPrompts([]);
-      setCurrentInputIndex(0);
       setConfigurationComplete(false);
+      setIsInitializing(true);
       
-      // Add the first question
-      askNextQuestion();
+      // Send initial webhook when the chatbot opens
+      sendInitialWebhook();
     }
-  }, [template]);
+  }, [isOpen, template]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -66,49 +75,165 @@ const ChatbotModal: React.FC<ChatbotModalProps> = ({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const askNextQuestion = () => {
+  const sendInitialWebhook = async () => {
     if (!template) return;
     
-    // Check if we're done with inputs
-    if (currentInputIndex >= template.inputs.length) {
-      // Check if we have customizable prompts to process
-      if (template.customizablePrompts && currentInputIndex < template.inputs.length + template.customizablePrompts.length) {
-        const promptIndex = currentInputIndex - template.inputs.length;
-        const prompt = template.customizablePrompts[promptIndex];
-        
-        addMessage({
-          id: `prompt-${prompt.id}`,
-          content: `${prompt.label}: ${prompt.description}\n\nAktueller Text: \n\n${prompt.defaultText}\n\nMöchten Sie diesen Text anpassen?`,
-          sender: 'system',
-          timestamp: new Date()
-        });
-      } else {
-        // All inputs and prompts are complete
-        addMessage({
-          id: 'complete',
-          content: 'Großartig! Ich habe alle benötigten Informationen gesammelt. Möchten Sie das n8n JSON generieren?',
-          sender: 'system',
-          timestamp: new Date()
-        });
-        setConfigurationComplete(true);
+    try {
+      setIsSubmitting(true);
+      
+      const response = await fetch(WEBHOOK_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'initialize',
+          templateId: template.id,
+          templateInputs: template.inputs,
+          customizablePrompts: template.customizablePrompts || [],
+          sessionId: Date.now().toString(), // Generate a simple session ID
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Webhook failed with status: ${response.status}`);
       }
-    } else {
-      // Ask for the next input
-      const input = template.inputs[currentInputIndex];
-      let message = `Bitte geben Sie Ihren ${input.label} ein: ${input.description}`;
-      if (input.required) {
-        message += " (Erforderlich)";
-      }
-      if (input.type === 'select' && input.options) {
-        message += "\n\nOptionen:\n" + input.options.map(opt => `- ${opt.label}`).join("\n");
+
+      const webhookResponse: WebhookResponse = await response.json();
+      
+      // Add the initial message from the webhook
+      addMessage({
+        id: `system-${Date.now()}`,
+        content: webhookResponse.message,
+        sender: 'system',
+        timestamp: new Date(),
+        responseType: webhookResponse.responseType,
+        responseOptions: webhookResponse.responseOptions,
+        responseData: webhookResponse.responseData
+      });
+      
+      // Check if the webhook already provided user inputs (should be rare but possible)
+      if (webhookResponse.userInputs) {
+        setUserInputs(webhookResponse.userInputs);
       }
       
+      if (webhookResponse.customizedPrompts) {
+        setCustomizedPrompts(webhookResponse.customizedPrompts);
+      }
+      
+      setIsInitializing(false);
+    } catch (error) {
+      console.error("Error sending initial webhook:", error);
       addMessage({
-        id: `input-${input.id}`,
-        content: message,
+        id: `error-${Date.now()}`,
+        content: "Es gab ein Problem bei der Verbindung zum Assistenten. Bitte versuchen Sie es später erneut.",
         sender: 'system',
         timestamp: new Date()
       });
+      toast({
+        title: "Fehler",
+        description: "Konnte keine Verbindung zum Assistenten herstellen.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const sendUserResponseToWebhook = async (userResponse: string | any, moduleResponseType?: string) => {
+    if (!template) return;
+    
+    try {
+      setIsSubmitting(true);
+      
+      // Add user message to chat
+      let displayContent = userResponse;
+      
+      // If the response is not a string (e.g., from a button or checkbox), 
+      // convert it to a displayable string
+      if (typeof userResponse !== 'string') {
+        if (Array.isArray(userResponse)) {
+          displayContent = userResponse.join(', ');
+        } else if (typeof userResponse === 'object') {
+          displayContent = JSON.stringify(userResponse);
+        }
+      }
+      
+      const userMessage: Message = {
+        id: `user-${Date.now()}`,
+        content: displayContent.toString(),
+        sender: 'user',
+        timestamp: new Date()
+      };
+      addMessage(userMessage);
+      
+      // Send the response to the webhook
+      const response = await fetch(WEBHOOK_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'processUserInput',
+          templateId: template.id,
+          userResponse: userResponse,
+          responseType: moduleResponseType, // Tell the server what type of response this was
+          userInputs: userInputs,
+          customizedPrompts: customizedPrompts,
+          sessionId: Date.now().toString(), // This should be consistent across interactions in a real implementation
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Webhook failed with status: ${response.status}`);
+      }
+
+      const webhookResponse: WebhookResponse = await response.json();
+      
+      // Add the system response from the webhook
+      addMessage({
+        id: `system-${Date.now()}`,
+        content: webhookResponse.message,
+        sender: 'system',
+        timestamp: new Date(),
+        responseType: webhookResponse.responseType,
+        responseOptions: webhookResponse.responseOptions,
+        responseData: webhookResponse.responseData
+      });
+      
+      // Update user inputs and customized prompts if provided by the webhook
+      if (webhookResponse.userInputs) {
+        setUserInputs(webhookResponse.userInputs);
+      }
+      
+      if (webhookResponse.customizedPrompts) {
+        setCustomizedPrompts(webhookResponse.customizedPrompts);
+      }
+      
+      // Check if the configuration is complete
+      if (webhookResponse.isComplete) {
+        setConfigurationComplete(true);
+        onComplete(
+          webhookResponse.userInputs || userInputs,
+          webhookResponse.customizedPrompts || customizedPrompts
+        );
+      }
+      
+    } catch (error) {
+      console.error("Error sending user response to webhook:", error);
+      addMessage({
+        id: `error-${Date.now()}`,
+        content: "Es gab ein Problem bei der Verarbeitung Ihrer Antwort. Bitte versuchen Sie es erneut.",
+        sender: 'system',
+        timestamp: new Date()
+      });
+      toast({
+        title: "Fehler",
+        description: "Konnte Ihre Antwort nicht verarbeiten.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -124,196 +249,16 @@ const ChatbotModal: React.FC<ChatbotModalProps> = ({
     e.preventDefault();
     if (!inputValue.trim() || !template || isSubmitting) return;
     
-    setIsSubmitting(true);
-    
-    // Add user message
-    const userMessage: Message = {
-      id: `user-${Date.now()}`,
-      content: inputValue,
-      sender: 'user',
-      timestamp: new Date()
-    };
-    addMessage(userMessage);
+    // Send the text input to the webhook
+    sendUserResponseToWebhook(inputValue.trim(), 'text');
     setInputValue('');
-    
-    // Process the user input
-    processUserInput(inputValue);
   };
 
-  const processUserInput = async (input: string) => {
-    if (!template) return;
+  const handleModuleResponse = (response: any, responseType: string) => {
+    if (!template || isSubmitting) return;
     
-    try {
-      if (configurationComplete) {
-        // User has confirmed they want to generate JSON
-        if (input.toLowerCase().includes('ja') || input.toLowerCase().includes('generieren')) {
-          try {
-            const json = N8nJsonSynthesizer.synthesize(template, userInputs, customizedPrompts);
-            addMessage({
-              id: 'json-success',
-              content: 'Das JSON wurde erfolgreich generiert und in die Zwischenablage kopiert!',
-              sender: 'system',
-              timestamp: new Date()
-            });
-            
-            // Copy to clipboard
-            navigator.clipboard.writeText(json)
-              .catch(() => {
-                toast({
-                  title: "Hinweis",
-                  description: "Das Kopieren in die Zwischenablage ist fehlgeschlagen. Bitte kopieren Sie das JSON manuell.",
-                  variant: "destructive",
-                });
-              });
-            
-            // Notify parent component that the configuration is complete
-            onComplete(userInputs, customizedPrompts);
-          } catch (error) {
-            addMessage({
-              id: 'json-error',
-              content: `Fehler beim Generieren des JSON: ${(error as Error).message}. Bitte überprüfen Sie Ihre Eingaben.`,
-              sender: 'system',
-              timestamp: new Date()
-            });
-          }
-        } else {
-          addMessage({
-            id: 'confirm-again',
-            content: 'Möchten Sie das JSON generieren? Bitte antworten Sie mit "Ja" oder "Nein".',
-            sender: 'system',
-            timestamp: new Date()
-          });
-        }
-      } 
-      // Handling customizable prompts
-      else if (template.customizablePrompts && currentInputIndex >= template.inputs.length && 
-               currentInputIndex < template.inputs.length + template.customizablePrompts.length) {
-        
-        const promptIndex = currentInputIndex - template.inputs.length;
-        const prompt = template.customizablePrompts[promptIndex];
-        
-        if (input.toLowerCase().includes('ja') && !input.toLowerCase().includes('nein')) {
-          // User wants to customize the prompt
-          addMessage({
-            id: `customize-${prompt.id}`,
-            content: `Bitte geben Sie Ihren angepassten Text für "${prompt.label}" ein:`,
-            sender: 'system',
-            timestamp: new Date()
-          });
-        } else if (input.toLowerCase().includes('nein')) {
-          // User wants to use default
-          setCustomizedPrompts(prev => [
-            ...prev.filter(p => p.promptId !== prompt.id),
-            { promptId: prompt.id, text: prompt.defaultText }
-          ]);
-          
-          addMessage({
-            id: `default-${prompt.id}`,
-            content: `Der Standardtext wird verwendet.`,
-            sender: 'system',
-            timestamp: new Date()
-          });
-          
-          // Move to next
-          setCurrentInputIndex(currentInputIndex + 1);
-          setTimeout(askNextQuestion, 500);
-        } else if (promptIndex > 0 || messages.some(m => m.id === `customize-${prompt.id}`)) {
-          // This is a custom text input from the user
-          setCustomizedPrompts(prev => [
-            ...prev.filter(p => p.promptId !== prompt.id),
-            { promptId: prompt.id, text: input }
-          ]);
-          
-          addMessage({
-            id: `saved-${prompt.id}`,
-            content: `Ihr angepasster Text wurde gespeichert.`,
-            sender: 'system',
-            timestamp: new Date()
-          });
-          
-          // Move to next
-          setCurrentInputIndex(currentInputIndex + 1);
-          setTimeout(askNextQuestion, 500);
-        } else {
-          // Unclear response
-          addMessage({
-            id: `unclear-${Date.now()}`,
-            content: `Entschuldigung, ich habe das nicht verstanden. Möchten Sie den Standardtext anpassen? Bitte antworten Sie mit "Ja" oder "Nein".`,
-            sender: 'system',
-            timestamp: new Date()
-          });
-        }
-      } 
-      // Regular input processing
-      else if (currentInputIndex < template.inputs.length) {
-        const currentInput = template.inputs[currentInputIndex];
-        
-        // Basic validation
-        let isValid = true;
-        let errorMessage = "";
-        
-        // Required field check
-        if (currentInput.required && !input.trim()) {
-          isValid = false;
-          errorMessage = "Dieses Feld ist erforderlich.";
-        }
-        
-        // Regex validation if present
-        if (currentInput.validationRegex && input.trim()) {
-          const regex = new RegExp(currentInput.validationRegex);
-          if (!regex.test(input)) {
-            isValid = false;
-            errorMessage = "Die Eingabe entspricht nicht dem erforderlichen Format.";
-          }
-        }
-        
-        // Select type validation
-        if (currentInput.type === 'select' && currentInput.options) {
-          const matchingOption = currentInput.options.find(
-            opt => opt.label.toLowerCase() === input.toLowerCase() || opt.value.toLowerCase() === input.toLowerCase()
-          );
-          
-          if (!matchingOption) {
-            isValid = false;
-            errorMessage = "Bitte wählen Sie eine der angegebenen Optionen.";
-          }
-        }
-        
-        if (isValid) {
-          // Save the input
-          const value = currentInput.type === 'select' && currentInput.options 
-            ? currentInput.options.find(
-                opt => opt.label.toLowerCase() === input.toLowerCase() || opt.value.toLowerCase() === input.toLowerCase()
-              )?.value || input
-            : input;
-            
-          setUserInputs(prev => [
-            ...prev.filter(ui => ui.inputId !== currentInput.id),
-            { inputId: currentInput.id, value }
-          ]);
-          
-          addMessage({
-            id: `valid-${currentInput.id}`,
-            content: `Danke! Ihr ${currentInput.label} wurde gespeichert.`,
-            sender: 'system',
-            timestamp: new Date()
-          });
-          
-          // Move to next
-          setCurrentInputIndex(currentInputIndex + 1);
-          setTimeout(askNextQuestion, 500);
-        } else {
-          addMessage({
-            id: `error-${Date.now()}`,
-            content: errorMessage,
-            sender: 'system',
-            timestamp: new Date()
-          });
-        }
-      }
-    } finally {
-      setIsSubmitting(false);
-    }
+    // Send the module response to the webhook
+    sendUserResponseToWebhook(response, responseType);
   };
 
   if (!isOpen) return null;
@@ -342,7 +287,19 @@ const ChatbotModal: React.FC<ChatbotModalProps> = ({
                       : 'bg-gray-100 text-gray-800'
                   }`}
                 >
-                  <div className="whitespace-pre-wrap">{message.content}</div>
+                  <div className="whitespace-pre-wrap mb-2">{message.content}</div>
+                  
+                  {/* Render interactive module if this is a system message with responseType */}
+                  {message.sender === 'system' && message.responseType && (
+                    <ChatResponseModule
+                      responseType={message.responseType}
+                      responseOptions={message.responseOptions}
+                      responseData={message.responseData}
+                      onResponse={handleModuleResponse}
+                      disabled={isSubmitting}
+                    />
+                  )}
+                  
                   <div 
                     className={`text-xs ${
                       message.sender === 'user' ? 'text-nova-100' : 'text-gray-500'
