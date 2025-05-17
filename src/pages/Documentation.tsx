@@ -1,9 +1,20 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
+import { FileText, Book, Code, Database, History } from 'lucide-react';
 import Layout from '@/components/Layout';
+import DocsModal from '@/components/DocsModal';
 
 const Documentation = () => {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [activeDocType, setActiveDocType] = useState('nutzerhandbuch');
+
+  const openDocModal = (docType: string) => {
+    setActiveDocType(docType);
+    setIsModalOpen(true);
+  };
+
   return (
     <Layout>
       <div className="nova-container py-8">
@@ -51,6 +62,17 @@ const Documentation = () => {
                       das generierte JSON als neuen Workflow.
                     </li>
                   </ol>
+                  
+                  <div className="mt-8 flex flex-wrap gap-4">
+                    <Button
+                      variant="outline"
+                      className="flex gap-2 items-center"
+                      onClick={() => openDocModal('nutzerhandbuch')}
+                    >
+                      <Book className="h-4 w-4" />
+                      Ausführliches Nutzerhandbuch
+                    </Button>
+                  </div>
                 </div>
               </TabsContent>
               
@@ -87,6 +109,25 @@ const Documentation = () => {
                     Jede Vorlage wurde sorgfältig entwickelt und getestet, um zuverlässige Ergebnisse zu liefern. 
                     Die Vorlagen lassen sich über den Chatbot-Assistenten an Ihre spezifischen Anforderungen anpassen.
                   </p>
+                  
+                  <div className="mt-8 flex flex-wrap gap-4">
+                    <Button
+                      variant="outline"
+                      className="flex gap-2 items-center"
+                      onClick={() => openDocModal('app-struktur')}
+                    >
+                      <Code className="h-4 w-4" />
+                      App-Struktur und Workflows
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="flex gap-2 items-center"
+                      onClick={() => openDocModal('changelog')}
+                    >
+                      <History className="h-4 w-4" />
+                      Changelog und Features
+                    </Button>
+                  </div>
                 </div>
               </TabsContent>
               
@@ -119,6 +160,17 @@ const Documentation = () => {
                     Falls Sie bei einem Schritt Hilfe benötigen, können Sie jederzeit Fragen stellen. Der Assistent 
                     wird versuchen, Ihnen weiterzuhelfen oder alternative Erklärungen anzubieten.
                   </p>
+                  
+                  <div className="mt-8 flex flex-wrap gap-4">
+                    <Button
+                      variant="outline"
+                      className="flex gap-2 items-center"
+                      onClick={() => openDocModal('technische-dokumentation')}
+                    >
+                      <Code className="h-4 w-4" />
+                      Technische Dokumentation
+                    </Button>
+                  </div>
                 </div>
               </TabsContent>
               
@@ -178,12 +230,52 @@ const Documentation = () => {
                       </p>
                     </div>
                   </div>
+                  
+                  <div className="mt-8 flex flex-wrap gap-4">
+                    <Button
+                      variant="outline"
+                      className="flex gap-2 items-center"
+                      onClick={() => openDocModal('datenbank-struktur')}
+                    >
+                      <Database className="h-4 w-4" />
+                      Datenbankstruktur und APIs
+                    </Button>
+                  </div>
                 </div>
               </TabsContent>
             </Tabs>
           </div>
+          
+          {/* Main documentation buttons */}
+          <div className="mt-12 flex flex-col items-center">
+            <h3 className="text-xl font-semibold mb-4">Vollständige Dokumentation</h3>
+            <div className="flex flex-wrap justify-center gap-4">
+              <Button 
+                size="lg"
+                className="flex gap-2 items-center"
+                onClick={() => openDocModal('nutzerhandbuch')}
+              >
+                <Book className="h-5 w-5" />
+                Nutzerhandbuch öffnen
+              </Button>
+              <Button 
+                size="lg" 
+                variant="outline"
+                className="flex gap-2 items-center"
+                onClick={() => openDocModal('technische-dokumentation')}
+              >
+                <Code className="h-5 w-5" />
+                Technische Dokumentation
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
+      
+      <DocsModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+      />
     </Layout>
   );
 };
